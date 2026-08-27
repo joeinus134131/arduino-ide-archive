@@ -1,0 +1,27 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Arduino build artifacts and cache
+build/
+*.hex
+*.bin
+*.elf
+*.eep
+*.o
+*.d
+*.a
+*.map
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.swp
+*~
+
+# Credentials & secrets (protect WiFi/MQTT tokens)
+secrets.h
+*.secret.h
+.env
