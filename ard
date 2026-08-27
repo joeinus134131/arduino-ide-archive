@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# ==============================================================================
+#  ARD - Arduino CLI Helper Tool for Fast Development
+# ==============================================================================
+set -e
+
+WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARDUINO_CLI="$(which arduino-cli || echo "/opt/homebrew/bin/arduino-cli")"
+
+# Colors
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Check arduino-cli installation
+if [ ! -x "$ARDUINO_CLI" ]; then
+    echo -e "${RED}Error: arduino-cli tidak ditemukan di sistem!${NC}"
+    echo "Silakan install via Homebrew: brew install arduino-cli"
+    exit 1
+fi
+
+# Function to detect default FQBN for a project
+get_default_fqbn() {
+    local proj="$1"
+    case "$proj" in
+        "robot_arm_smooth"|"servo_test"|"pengingat_sembahyang_v2"|"pray_test_module"|"step_1"|"RTC_CALIBRADSI"|"oled_starboy")
+            echo "arduino:avr:uno"
+            ;;
+        "my_home_iot_full"|"moisture_nexflux"|"test_dht11")
+            echo "esp8266:esp8266:nodemcuv2"
+            ;;
+        "smart-iot-desk"|"vector_robot_project"|"motor_esp32"|"oled_temp")
+            echo "esp32:esp32:esp32da"
+            ;;
+        *)
+            echo "arduino:avr:uno"
+            ;;
+    esac
+}
+
+show_help() {
+    echo -e "${CYAN}======================================================${NC}"
+    echo -e "${CYAN}   🚀 ARD - Arduino Workspace CLI Tool${NC}"
+    echo -e "${CYAN}======================================================${NC}"
+    echo -e "Usage: ./ard <command> [arguments...]"
+    echo ""
+    echo -e "${YELLOW}Commands:${NC}"
+    echo -e "  ${GREEN}list${NC}                           Lihat board & serial port USB yang terhubung"
+    echo -e "  ${GREEN}compile <project> [fqbn]${NC}       Compile sketch (FQBN otomatis terdeteksi jika kosong)"
+    echo -e "  ${GREEN}upload <project> <port> [fqbn]${NC}  Compile dan Upload sketch ke mikrokontroler"
+    echo -e "  ${GREEN}monitor <port> [baud]${NC}          Buka Serial Monitor (default baud: 9600)"
+    echo -e "  ${GREEN}test-all${NC}                       Compile dan test semua project di workspace"
+    echo -e "  ${GREEN}libs${NC}                           Lihat daftar library yang terinstall"
+    echo -e "  ${GREEN}help${NC}                           Tampilkan panduan ini"
+    echo ""
+    echo -e "${YELLOW}Contoh Penggunaan:${NC}"
+    echo -e "  ./ard list"
+    echo -e "  ./ard compile robot_arm_smooth"
+    echo -e "  ./ard compile my_home_iot_full"
+    echo -e "  ./ard upload robot_arm_smooth /dev/cu.usbserial-110"
+    echo -e "  ./ard monitor /dev/cu.usbserial-110 9600"
+    echo -e "  ./ard test-all"
+    echo ""
+}
+
+cmd_list() {
+    echo -e "${BLUE}>>> Memeriksa board & serial port yang terhubung...${NC}"
+    "$ARDUINO_CLI" board list
+}
+
+cmd_libs() {
+    echo -e "${BLUE}>>> Memeriksa library yang terinstall...${NC}"
+    "$ARDUINO_CLI" lib list
+}
+
+cmd_compile() {
+    local proj="$1"
+    local fqbn="$2"
+
+    if [ -z "$proj" ]; then
+        echo -e "${RED}Error: Sebutkan nama folder project!${NC}"
+        echo "Contoh: ./ard compile robot_arm_smooth"
+        exit 1
+    fi
+
+    local target_dir="$WORKSPACE_DIR/$proj"
+    if [ ! -d "$target_dir" ]; then
+        echo -e "${RED}Error: Folder project '$proj' tidak ditemukan di workspace!${NC}"
+        exit 1
+    fi
+
+    if [ -z "$fqbn" ]; then
+        fqbn=$(get_default_fqbn "$proj")
+        echo -e "${YELLOW}-> Menggunakan target board FQBN: ${fqbn}${NC}"
+    fi
+
+    echo -e "${BLUE}>>> Compiling '$proj' dengan board [$fqbn]...${NC}"
+    "$ARDUINO_CLI" compile --fqbn "$fqbn" "$target_dir"
+    echo -e "${GREEN}✔ SUCCESS: '$proj' berhasil di-compile tanpa error!${NC}"
+}
+
+cmd_upload() {
+    local proj="$1"
+    local port="$2"
+    local fqbn="$3"
+
+    if [ -z "$proj" ]; then
+        echo -e "${RED}Error: Sebutkan nama folder project!${NC}"
+        echo "Contoh: ./ard upload robot_arm_smooth /dev/cu.usbserial-110"
+        exit 1
+    fi
+
+    local target_dir="$WORKSPACE_DIR/$proj"
+    if [ ! -d "$target_dir" ]; then
+        echo -e "${RED}Error: Folder project '$proj' tidak ditemukan di workspace!${NC}"
+        exit 1
+    fi
+
+    if [ -z "$port" ]; then
+        echo -e "${RED}Error: Sebutkan serial port board!${NC}"
+        echo -e "Jalankan './ard list' untuk melihat daftar port yang aktif."
+        exit 1
+    fi
+
+    if [ -z "$fqbn" ]; then
+        fqbn=$(get_default_fqbn "$proj")
+    fi
+
+    echo -e "${BLUE}>>> Compiling & Uploading '$proj' ke $port [$fqbn]...${NC}"
+    "$ARDUINO_CLI" compile --fqbn "$fqbn" --upload -p "$port" "$target_dir"
+    echo -e "${GREEN}✔ SUCCESS: '$proj' berhasil di-upload ke $port!${NC}"
+}
+
+cmd_monitor() {
+    local port="$1"
+    local baud="${2:-9600}"
+
+    if [ -z "$port" ]; then
+        echo -e "${RED}Error: Sebutkan serial port yang ingin dimonitor!${NC}"
+        echo -e "Contoh: ./ard monitor /dev/cu.usbserial-110 9600"
+        exit 1
+    fi
+
+    echo -e "${BLUE}>>> Membuka Serial Monitor pada $port @ $baud baud... (Tekan Ctrl+C untuk keluar)${NC}"
+    "$ARDUINO_CLI" monitor -p "$port" -c baudrate="$baud"
+}
+
+cmd_test_all() {
+    echo -e "${CYAN}======================================================${NC}"
+    echo -e "${CYAN}   🧪 BATCH COMPILE TEST ALL PROJECTS${NC}"
+    echo -e "${CYAN}======================================================${NC}"
+
+    local passed=0
+    local failed=0
+    local failed_list=()
+
+    # Find all directories containing .ino files (excluding _templates and libraries)
+    for dir in "$WORKSPACE_DIR"/*; do
+        if [ -d "$dir" ]; then
+            local folder_name="$(basename "$dir")"
+            if [ "$folder_name" == "libraries" ] || [ "$folder_name" == "_templates" ] || [ "$folder_name" == "hardware" ]; then
+                continue
+            fi
+
+            # Check if directory contains .ino
+            if compgen -G "$dir/*.ino" > /dev/null; then
+                local fqbn=$(get_default_fqbn "$folder_name")
+                echo -ne "Testing [${folder_name}] ($fqbn) ... "
+                
+                if "$ARDUINO_CLI" compile --fqbn "$fqbn" "$dir" > /dev/null 2>&1; then
+                    echo -e "${GREEN}PASSED${NC}"
+                    passed=$((passed + 1))
+                else
+                    echo -e "${RED}FAILED${NC}"
+                    failed=$((failed + 1))
+                    failed_list+=("$folder_name ($fqbn)")
+                fi
+            fi
+        fi
+    done
+
+    echo ""
+    echo -e "${CYAN}======================================================${NC}"
+    echo -e "Hasil Test: ${GREEN}${passed} Passed${NC} | ${RED}${failed} Failed${NC}"
+    if [ $failed -gt 0 ]; then
+        echo -e "${YELLOW}Project yang gagal compile:${NC}"
+        for f in "${failed_list[@]}"; do
+            echo -e "  - ${RED}$f${NC}"
+        done
+    else
+        echo -e "${GREEN}Semua project berhasil di-compile tanpa error! 🎉${NC}"
+    fi
+    echo -e "${CYAN}======================================================${NC}"
+}
+
+# Main command router
+case "$1" in
+    "list")
+        cmd_list
+        ;;
+    "libs")
+        cmd_libs
+        ;;
+    "compile")
+        cmd_compile "$2" "$3"
+        ;;
+    "upload")
+        cmd_upload "$2" "$3" "$4"
+        ;;
+    "monitor")
+        cmd_monitor "$2" "$3"
+        ;;
+    "test-all")
+        cmd_test_all
+        ;;
+    "help"|"-h"|"--help"|"")
+        show_help
+        ;;
+    *)
+        echo -e "${RED}Perintah tidak dikenal: $1${NC}"
+        show_help
+        exit 1
+        ;;
+esac

@@ -4,6 +4,10 @@
 .LSOverride
 ._*
 
+# Arduino dependencies & SDKs (managed via Arduino IDE / CLI)
+hardware/
+libraries/
+
 # Arduino build artifacts and cache
 build/
 *.hex
